@@ -7,6 +7,7 @@
 #include<time.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #define PREFIX "movies_"
 
@@ -64,7 +65,8 @@ struct movie* createMovie(char* curLine) {
 
 struct Movie* processCSV(char* filePath)
 {
-    FILE* movies = fopen(filePath, "r");
+    char* temp = filePath;
+    FILE* movies = fopen(temp, "r");
     if (movies == NULL) {
         perror("File failed to open");
     }
@@ -104,11 +106,6 @@ struct Movie* processCSV(char* filePath)
         }
         moviecount++;
     }
-    printf("Processed the file ");
-    printf("%s ", filePath);
-    printf("and parsed data for ");
-    printf("%d ", moviecount);
-    printf("movies \n");
     free(currLine);
     fclose(movies);
     return head;
@@ -130,29 +127,28 @@ This function will:
 	Print the name of the created directory in the format "onid.movies.random" (DONE)
 	random is a random number 0-99999 inclusive (DONE)
 	Set directory permissions to rwxr-x--- (read, write & execute) (DONE)
-	Parse data in chosen file to find out the movies released in each year
-	In the new directory, create one file for each year in which at least one movie was released.
-		File permissions are rw-r-----
-		File must be named YYYY.txt
-		Movie titles released in that year will be in the file, one title per line.
+	Parse data in chosen file to find out the movies released in each year (DONE)
+	In the new directory, create one file for each year in which at least one movie was released. (DONE)
+		File permissions are rw-r----- (DONE)
+		File must be named YYYY.txt (DONE)
+		Movie titles released in that year will be in the file, one title per line. (DONE)
 */
 void processFile(char* fileName){
-	printf("Now processing the file %s", fileName);
+    //Parse csv data
+    printf("\nNow processing the chosen file named %s\n", fileName);
+    struct movie* list = processCSV(fileName);
 	//Create a new directory
 	srand(time(NULL));
   int r = rand() % 100000; //random number used for directory #
-  printf("%d\n", r);
   char* onid = "harokr.movies.";
   char rng[6];
   sprintf(rng, "%d", r);
   int len = strlen(onid) + 6;
   char dirName[len];
   strcpy(dirName,onid);
-  strcat(dirName,rng);
-  printf("\n%s", dirName);
-  mkdir(filename, S_IRWXU | S_IRGRP | S_IXGRP); //Directory made
-  //Parse csv data
-  struct movie* list = processCSV(fileName);
+  strcat(dirName, rng);
+  mkdir(dirName, S_IRWXU | S_IRGRP | S_IXGRP); //Directory made
+  printf("Created directory with name %s\n", dirName);
   //Get an array of unique years
   int total = movieCounter(list);
   int years[total - 1]; //array of unique years
@@ -192,40 +188,44 @@ void processFile(char* fileName){
 		sprintf(curYear, "%d", years2[i]);
 		char ext[5] = ".txt\0";
 		char* slash = "/";
-		len = strlen(filename) + 10; //10 for length of year, .txt, and slash
+		len = strlen(dirName) + 10; //10 for length of year, .txt, and slash
 		char newFilePath[len];
-		strcpy(newFilePath, filename);
+		strcpy(newFilePath, dirName);
 		strcat(newFilePath, slash);
-		strcat(newFilePath, year);
+		strcat(newFilePath, curYear);
 		strcat(newFilePath, ext);
 		//Using the opening/closing file example
 		file_descriptor = open(newFilePath, O_RDWR | O_CREAT, 0640); //File has been made
 		//Now iterate through the list finding appropirate movies
-        struct movie* theList2 = movies;
+        struct movie* theList2 = list;
         theList2 = theList2->next;
         //char* theTitle = theList2->title;
         while (theList2 != NULL) {
             if (atoi(theList2->year) == years2[i]) {
                 //write to file here
-				write(file_descriptor, theList2->title, strlen(theList2->title));
+				write(file_descriptor, theList2->title, strlen(theList2->title)); //From reading/writing to a file example
+				//Add a new line after each movie
+				write(file_descriptor, "\n", strlen("\n"));
             }
             theList2 = theList2->next;
         }
+        //After iterating through the list, close the file
+        close(file_descriptor);
     }
-	//After iterating through the list, close the file
+	
 	
 }
 
 //The functions findSmallest and findLargest are based off the "Getting File and Directory Meta-Data"
 // examples
 char* findSmallest(){
-	DIR* currDir = opendir(".");
+    DIR* currDir = opendir(".");
   struct dirent *aDir;
   struct stat dirStat;
   char myChar[256];
   int size;
   int minSize = 0;
-  char smallest[256];
+  char* smallest;
   static bool once = false;
     
   while((aDir = readdir(currDir)) != NULL){
@@ -236,20 +236,22 @@ char* findSmallest(){
       strcpy(myChar,aDir->d_name);
       char* ext = strrchr(myChar, '.');
       if(ext != NULL){
-        if(strcmp(ext, ".txt") == 0){
-          printf("Suitable file found\n");
+        if(strcmp(ext, ".csv") == 0){
           //Now get its size
           size = dirStat.st_size;
-          printf("%s, size %d bytes\n", myChar, size);
           //We want the first file to be the smallest, so we initialize min value only once
           if(once == false){
-            minSize = size;
-            strcpy(smallest,myChar);
+              char* temp = aDir->d_name;
+              smallest = calloc(strlen(temp) + 1, sizeof(char));
+              strcpy(smallest, temp);
+              minSize = size;
             once = true;
           }
           if(size < minSize){
-            minSize = size;
-            strcpy(smallest,myChar);
+              char* temp = aDir->d_name;
+              smallest = calloc(strlen(temp) + 1, sizeof(char));
+              strcpy(smallest, temp);
+              minSize = size;
           }
           }
         }
@@ -258,8 +260,6 @@ char* findSmallest(){
       
   }
   closedir(aDir);
-  printf("\n The smallest file in the directory is %s, with size %d bytes\n",
-  smallest, minSize);
   return smallest;
 }
 
@@ -270,7 +270,7 @@ char* findLargest(){
   char myChar[256];
   int size;
   int maxSize = 0;
-  char largest[256];
+  char* largest;
     
   while((aDir = readdir(currDir)) != NULL){
 
@@ -281,13 +281,13 @@ char* findLargest(){
       char* ext = strrchr(myChar, '.');
       if(ext != NULL){
         if(strcmp(ext, ".csv") == 0){
-          printf("Suitable file found\n");
           //Now get its size
           size = dirStat.st_size;
-          printf("%s, size %d bytes\n", myChar, size);
           if(size > maxSize){
+            char* temp = aDir->d_name;
+            largest = calloc(strlen(temp) + 1, sizeof(char));
+            strcpy(largest, temp);
             maxSize = size;
-            strcpy(largest,myChar);
           }
           }
         }
@@ -296,8 +296,6 @@ char* findLargest(){
       
   }
   closedir(aDir);
-  printf("\n The largest file in the directory is %s, with size %d bytes\n",
-  largest, maxSize);
   return largest;
 }
 
@@ -311,46 +309,42 @@ int main()
     while (choice != 2) {
         switch (choice) {
         case 1:
-			label:
+            label:
             printf("\nWhich file you want to process?");
 			printf("\nEnter 1 to pick the largest file");
 			printf("\nEnter 2 to pick the smallest file");
 			printf("\nEnter 3 to specify the name of a file");
-			int choice2;
-			scanf("%d", &choice2);
-			switch(choice2){
-				case 1: //Find largest file
-				char* file = findLargest();
-				processFile(file);
-				break;
-				
-				case 2: //Find smallest file
-				char* file = findSmallest;
-				processFile(file);
-				break;
-				
-				case 3: //Specify the name of a file
-				printf("\nEnter the namne of the file: ");
-				char* name;
-				scanf("%s", &name);
-				//Seach name in the directory if it exists
-				int file = -1;
-				file = open(name, O_RDWR); //From the Opening & Closing exploration code
-				if(file == -1){
-					printf("\nThe file %s was not found. Try again", name);
-					goto label;
-				}
-				else{
-					
-				} 
-				break;
-				
-				default:
-					printf("\nInvalid number entered, please enter a number between 1 and 3.");
-			}
+            printf("\nEnter a choice from 1 to 3: ");
+            char* largest;
+            char* smallest;
+            int choice2;
+            scanf("%d", &choice2);
+            switch (choice2) {
+            case 1:
+                largest = findLargest();
+                processFile(largest);
+                break;
+            case 2:
+                smallest = findSmallest();
+                processFile(smallest);
+                break;
+            case 3:
+                printf("\nEnter the complete file name: ");
+                char name[100];
+                scanf("%s", name);
+                int fd = open(name, O_RDWR);
+                if (fd == -1) {
+                    printf("\nThe file %s was not found. Try again", name);
+                    goto label;
+                }
+                else {
+                    processFile(name);
+                    break;
+                }
+            }
             break;
         case 2:
-
+            break;
         default:
             printf("\nInvalid number entered, please enter a number between 1 and 2.");
 
