@@ -1,3 +1,5 @@
+Sends messages from server to client via one-time pads
+
 To compile:
 $ ./compileall
 
